@@ -386,6 +386,43 @@ class DirectoryFileHandler(object):
             elif action == "copy":
                 file_handler.copy_file(new_path)
 
+    def search_files(self, regex_match, capture_group=0, **kwargs):
+        """
+        Searches over all files in a directory and returns a mapping of input
+        files to strings that match the regulat expression
+
+            Args:
+                regex_match (str): Regular expression, with optional capture groups
+                    to search over the individual files
+                capture_group (int): Number of the capture group to extract. Default is
+                    0 which extracts the whole strings
+                kwargs: Set of criteria, each of which must bot the form
+                    criteria=criteria_value, where criteria is a string of the form
+                    condition_filedetail, where condition is lower, upper
+                    or equal and filedetail is any file parameter defined
+                    in https://docs.python.org/3/library/os.html#os.stat_result
+
+            Returns:
+                dict: Mapping from filepath to a list containing all regular
+                    expression matches
+        """
+
+        # Count the files to search over
+        matching_files = self.count_files(**kwargs)
+
+        # Iterate through the files one by one and move them
+        logging.info("Searching over %d matching files for pattern %s", len(matching_files),
+                     regex_match)
+        all_matches = {}
+        for file_path in matching_files:
+            file_handler = SingleFileHandler(file_path)
+            matches = file_handler.search_file(regex_match, capture_group=capture_group)
+            all_matches[file_path] = matches
+            if action in ["move"]:
+                file_handler.move_file(new_path)
+            elif action == "copy":
+                file_handler.copy_file(new_path)
+
     def zip_files(self, tar_name, remove=True, **kwargs):
         """
         Zips input files from the directory to a new tarball, which match the set of input
