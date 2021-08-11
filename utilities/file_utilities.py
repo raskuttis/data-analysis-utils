@@ -12,6 +12,7 @@ import sys
 import traceback
 import json
 import tarfile
+import re
 
 class LockFile(object):
     """
@@ -138,6 +139,26 @@ class SingleFileHandler(object):
                               self.filename, new_filename, err)
         else:
             logging.debug("File %s doesn't exist", self.filename)
+
+    def search_file(self, regex_match):
+        """
+        Searches over an input file's contents and extracts strings that
+        match the given regular expression, returning them as a list
+        """
+        if os.path.isfile(self.filename):
+            try:
+                matches = []
+                for line in open(self.filename, "r"):
+                    for match in re.finditer(regex_match, line):
+                        matches += [match]
+                return matches
+            except Exception as err:
+                logging.error("Failed to move file %s to %s with error %s",
+                              self.filename, new_filename, err)
+        else:
+            logging.debug("File %s doesn't exist", self.filename)
+
+        return []
 
     def get_status_from_locations(self):
         """
