@@ -416,6 +416,8 @@ class DirectoryFileHandler(object):
             matches = file_handler.search_file(regex_match, capture_group=capture_group)
             all_matches[file_path] = matches
 
+        return all_matches
+
     def zip_files(self, tar_name, remove=True, **kwargs):
         """
         Zips input files from the directory to a new tarball, which match the set of input
