@@ -140,7 +140,7 @@ class SingleFileHandler(object):
         else:
             logging.debug("File %s doesn't exist", self.filename)
 
-    def search_file(self, regex_match):
+    def search_file(self, regex_match, capture_group=0):
         """
         Searches over an input file's contents and extracts strings that
         match the given regular expression, returning them as a list
@@ -150,7 +150,7 @@ class SingleFileHandler(object):
                 matches = []
                 for line in open(self.filename, "r"):
                     for match in re.finditer(regex_match, line):
-                        matches += [match]
+                        matches += [match.group(capture_group)]
                 return matches
             except Exception as err:
                 logging.error("Failed to move file %s to %s with error %s",
