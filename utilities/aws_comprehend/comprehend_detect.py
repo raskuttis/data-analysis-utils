@@ -220,10 +220,11 @@ class ComprehendHandler:
                 n_chars = 0
 
         # And post whatever is left over as a final batch
-        entities = self.extract_batch(submit_documents, comprehend_detector,
-                                      usage_type, n_units=n_units, **kwargs)
-        for entity in entities:
-            yield entity
+        if n_chars > 0:
+            entities = self.extract_batch(submit_documents, comprehend_detector,
+                                          usage_type, n_units=n_units, **kwargs)
+            for entity in entities:
+                yield entity
 
     def estimate_cost(self, n_units, usage_type):
         """
