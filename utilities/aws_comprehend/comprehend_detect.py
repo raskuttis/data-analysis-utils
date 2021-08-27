@@ -167,10 +167,7 @@ class ComprehendHandler:
             n_units = detector.get_units(sum([len(text) for text in documents]))
 
         # First estimate the additional cost of submitting these documents
-        current_usage = {usage_type: self.units_submitted.get(usage_type, 0)}
-        est_usage = {usage_type: self.units_submitted.get(usage_type, 0) + n_units}
-        estimated_cost = self.get_comprehend_cost(est_usage) - \
-                         self.get_comprehend_cost(current_usage)
+        estimated_cost = self.estimate_cost(n_units, usage_type)
 
         # Raise an error if the estimated cost is too much
         if estimated_cost + self.running_cost > self.max_cost:
@@ -227,6 +224,61 @@ class ComprehendHandler:
                                       usage_type, n_units=n_units, **kwargs)
         for entity in entities:
             yield entity
+
+    def estimate_cost(self, n_units, usage_type):
+        """
+        Method to estimate cost of submitting a set number of units
+        to Comprehend, given the existing usage
+
+        :param n_units: Number of units being submitted
+        :param usage_type: What service we're using with Comprehend.
+        :return estimated cost of submission
+
+        """
+
+        # First estimate the additional cost of submitting these documents
+        current_usage = {usage_type: self.units_submitted.get(usage_type, 0)}
+        est_usage = {usage_type: self.units_submitted.get(usage_type, 0) + n_units}
+        estimated_cost = self.get_comprehend_cost(est_usage) - \
+                         self.get_comprehend_cost(current_usage)
+
+        return estimated_cost
+
+    def estimate_usage(self, documents, usage_type):
+        """
+        Method to estimate the usage and cost of submitting documents to
+        Comprehend
+
+        :param documents: List of documents to extract PII for
+        :param usage_type: What service we're using with Comprehend.
+        :return number of units
+        :return estimated cost of submission
+
+        """
+
+        # Initialize the counters on document size
+        submit_documents = []
+        n_chars = 0
+
+        # Initialize the Detector for interacting with Comprehend
+        comprehend_detector = self.initialize_detector(usage_type)
+
+        # Iterate through the list of documents
+        total_units = 0
+        for text in documents:
+            n_chars += len(text)
+            n_units = comprehend_detector.get_units(n_chars)
+            if n_units < self.min_post_units:
+                pass
+            else:
+                total_units += n_units
+                n_chars = 0
+
+        # And add the last set of units
+        total_units += n_units
+        total_cost = self.estimate_cost(n_units, usage_type)
+
+        return total_units, total_cost
 
 class ComprehendDetect:
     """Encapsulates Comprehend detection functions."""
