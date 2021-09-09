@@ -11,7 +11,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.naive_bayes import GaussianNB
-from xgboost import XGBClassifier
+#from xgboost import XGBClassifier
 from sklearn.svm import SVC
 
 
@@ -44,9 +44,9 @@ MODELS = {
                 "n_estimators": [16, 32]
             }
         },
-        "XGB": {
-            "Classifier": XGBClassifier(verbosity=0)
-        },
+#        "XGB": {
+#            "Classifier": XGBClassifier(verbosity=0)
+#        },
         "GB": {
             "Classifier": GradientBoostingClassifier(),
             "Parameters": {
