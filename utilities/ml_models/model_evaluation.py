@@ -17,6 +17,8 @@ from sklearn.model_selection import GridSearchCV, cross_validate
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.metrics import roc_curve, precision_recall_curve
 
+from .. import plotting_utilities
+
 
 class ModelReport(object):
     """
@@ -85,7 +87,7 @@ class ModelReport(object):
 
         accuracy, report = self.get_classification_report()
 
-        return plot_table(report, title="Classification Report")
+        return plotting_utilities.plot_table(report, title="Classification Report")
 
     def plot_precision_recall(self):
         """
