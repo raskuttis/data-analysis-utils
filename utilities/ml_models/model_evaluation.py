@@ -261,6 +261,7 @@ class ModelComparison(object):
             self.metrics = []
         self.fit_metric = fit_metric
         self.preprocess_pipe = preprocess_pipe
+        self.best_model = None
 
     def get_fold_predictions(self, method="predict_proba"):
         """
@@ -333,6 +334,9 @@ class ModelComparison(object):
                                                      subset_df["std_fit_time"])
             subset_df["score_time"] = np.random.normal(subset_df["mean_score_time"],
                                                        subset_df["std_score_time"])
+            if self.preprocess_pipe:
+                subset_df["params"] = subset_df["params"].apply(lambda x: {p_name.replace("model__", ""): p_value
+                                                                           for p_name, p_value in x.items()})
             subset_df["params"] = subset_df["params"].apply(json.dumps)
             all_gs_results += [subset_df]
         scores_df = pd.concat(all_gs_results)
@@ -340,6 +344,37 @@ class ModelComparison(object):
         scores_df = scores_df.rename(columns={f"rank_test_{self.fit_metric}": "rank"})
 
         return scores_df
+
+    def get_best_model(self, fit=True):
+        """
+        Function to return the best fit model with the best fit parameters
+
+        :param fit: Boolean for whether or not to fit the best model or just
+        return it
+        :return: Best sklearn estimator
+        """
+
+        # Get metrics if they don't already exist
+        self.get_metrics([self.fit_metric])
+
+        # Get the model with the best rank and best parameter rank
+        best_scores = self.scores[(self.scores["rank"] == 1) &
+                                  (self.scores["model_rank"] == 1)]
+        best_model = best_scores["model"].unique()[0]
+        best_model = self.models.get(best_model, {}).get("Classifier")
+        best_params = json.loads(best_scores["params"].unique()[0])
+        best_model.set_params(**best_params)
+        if self.preprocess_pipe:
+            best_model = Pipeline([("preprocess", self.preprocess_pipe), ("model", best_model)])
+
+        # Save the model for the future
+        self.best_model = best_model
+
+        # Fit if necessary
+        if fit:
+            self.best_model.fit(self.X_train, self.Y_train)
+
+        return self.best_model
 
     def get_metrics(self, metrics):
         """
@@ -381,6 +416,7 @@ class ModelComparison(object):
                                             scoring=metrics)
                     scores_df = pd.DataFrame(scores)
                     scores_df["params"] = "{}"
+                    scores_df["params"] = scores_df["params"].apply(json.loads)
                     scores_df["rank"] = 1
                     best_scores[model_name] = np.mean(scores[f"test_{self.fit_metric}"])
                 scores_df = scores_df.rename(columns={f"test_{metric}": metric for metric in metrics})
