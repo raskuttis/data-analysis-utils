@@ -410,7 +410,6 @@ class ModelComparison(object):
                     grid_search.fit(self.X_train, self.Y_train)
                     # Reshape the grid search results
                     scores_df = self.parse_grid_search_results(grid_search.cv_results_)
-                    scores_df["params"] = scores_df["params"].apply(json.dumps)
                     best_scores[model_name] = grid_search.best_score_
                 else:
                     scores = cross_validate(clf, self.X_train, self.Y_train, cv=self.folds,
