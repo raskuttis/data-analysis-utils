@@ -16,6 +16,7 @@ from sklearn import model_selection
 from sklearn.model_selection import GridSearchCV, cross_validate
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.metrics import roc_curve, precision_recall_curve
+from sklearn.pipeline import Pipeline
 
 from .. import plotting_utilities
 
@@ -27,7 +28,8 @@ class ModelReport(object):
     from the model
     """
 
-    def __init__(self, model, X_test, Y_test, fit=True, X_train=None, Y_train=None):
+    def __init__(self, model, X_test, Y_test, fit=True, X_train=None, Y_train=None,
+                 preprocess_pipe=None):
         """
         Init method for Model Report. Takes in best fit estimator, training
         data and test data
@@ -38,9 +40,13 @@ class ModelReport(object):
         :param fit: Boolean for whether the model has already been fit or not
         :param X_train: Training data, only used if the model isn't yet fit
         :param Y_train: Training target variable
+        :param preprocess_pipe: A separate preprocessing pipeline if we want
+        to concatenate that with the model
         """
 
         self.model = model
+        if preprocess_pipe:
+            self.model = Pipeline([("preprocess", preprocess_pipe), ("model", model)])
         # If the model isn't already fit, then fit it
         if not fit:
             self.model.fit(X_train, Y_train)
@@ -134,7 +140,8 @@ class ModelComparison(object):
     and plot them if necessary
     """
 
-    def __init__(self, models, X_train, Y_train, cv=10, metrics=None, fit_metric="accuracy"):
+    def __init__(self, models, X_train, Y_train, cv=10, metrics=None, fit_metric="accuracy",
+                 preprocess_pipe=None):
         """
         Init method for Model Comparison. Takes in a dictionary of models, training
         data and test data
@@ -146,6 +153,8 @@ class ModelComparison(object):
         :param cv: Number of folds to do cross-validation over
         :param metrics: Metrics to report on
         :param fit_metric: Metrics to use to choose the best fit estimator
+        :param preprocess_pipe: A separate preprocessing pipeline if we want
+        to concatenate that with the model
         """
 
         self.models = models
@@ -158,6 +167,7 @@ class ModelComparison(object):
         if not self.metrics:
             self.metrics = []
         self.fit_metric = fit_metric
+        self.preprocess_pipe = preprocess_pipe
 
     def get_fold_predictions(self, method="predict_proba"):
         """
@@ -171,13 +181,21 @@ class ModelComparison(object):
 
         for model_name, model_dict in self.models.items():
             clf = model_dict.get("Classifier")
+            if self.preprocess_pipe:
+                clf = Pipeline([("preprocess", self.preprocess_pipe), ("model", clf)])
             y_pred = []
             y_actual = []
             if hasattr(clf, method):
                 predict_method = getattr(clf, method)
                 for i, (train, test) in enumerate(self.folds.split(self.X_train)):
-                    clf.fit(self.X_train[train], self.Y_train[train])
-                    Y_test = predict_method(self.X_train[test])[:, 1].tolist()
+                    if isinstance(self.X_train, pd.DataFrame):
+                        train_set = self.X_train.iloc[train]
+                        test_set = self.X_train.iloc[test]
+                    else:
+                        train_set = self.X_train[train]
+                        test_set = self.X_train[test]
+                    clf.fit(train_set, self.Y_train[train])
+                    Y_test = predict_method(test_set)[:, 1].tolist()
                     y_pred += Y_test
                     y_actual += self.Y_train[test].tolist()
 
@@ -254,7 +272,10 @@ class ModelComparison(object):
             best_scores = {}
             for model_name, model_dict in self.models.items():
                 clf = model_dict.get("Classifier")
-                params = model_dict.get("Parameters")
+                params = model_dict.get("Parameters", {})
+                if self.preprocess_pipe:
+                    clf = Pipeline([("preprocess", self.preprocess_pipe), ("model", clf)])
+                    params = {f"model__{param_name}": param_value for param_name, param_value in params.items()}
                 if params:
                     grid_search = GridSearchCV(clf, params, cv=self.folds, scoring=metrics,
                                                refit=self.fit_metric)
@@ -331,8 +352,9 @@ class ModelComparison(object):
 
         :return: Matplotlib Axis object
         """
-
-        return self.plot_metrics()
+        plot = self.plot_metrics()
+        plot.set_ylim(0,1)
+        return plot
 
     def plot_parameter_metrics(self, model_name=None):
         """
@@ -342,7 +364,9 @@ class ModelComparison(object):
         :return: Matplotlib Axis object
         """
 
-        return self.plot_metrics(x_var="params", model_name=model_name)
+        plot = self.plot_metrics(x_var="params", model_name=model_name)
+        plot.set_ylim(0, 1)
+        return plot
 
     def plot_times(self, times=None):
         """
