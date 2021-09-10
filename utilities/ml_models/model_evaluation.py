@@ -89,6 +89,20 @@ class ModelReport(object):
 
         return plotting_utilities.plot_table(report, title="Classification Report")
 
+    def get_classification_type(self, true_class, pred_class):
+        """
+        Retrieves the rows of the data matrix that correspond to different
+        true and predicted classes e.g. false positives
+
+        :param true_class: The real, observed class of the data
+        :param pred_class: The predicted class
+        :return: subset of X_test
+        """
+
+        indices = np.logical_and(self.Y_actual == true_class, self.Y_pred == pred_class)
+
+        return self.X_test[indices]
+
     def plot_precision_recall(self):
         """
         Plot a precision recall curve
