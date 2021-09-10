@@ -363,7 +363,7 @@ class ModelComparison(object):
         best_model = best_scores["model"].unique()[0]
         best_model = self.models.get(best_model, {}).get("Classifier")
         best_params = json.loads(best_scores["params"].unique()[0])
-        best_model.set_params(**json.loads(best_params))
+        best_model.set_params(**best_params)
         if self.preprocess_pipe:
             best_model = Pipeline([("preprocess", self.preprocess_pipe), ("model", best_model)])
 
