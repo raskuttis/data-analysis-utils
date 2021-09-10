@@ -335,10 +335,9 @@ class ModelComparison(object):
             subset_df["score_time"] = np.random.normal(subset_df["mean_score_time"],
                                                        subset_df["std_score_time"])
             if self.preprocess_pipe:
-                subset_df["params"] = subset_df["params"].apply(json.loads)
                 subset_df["params"] = subset_df["params"].apply(lambda x: {p_name.replace("model__", ""): p_value
                                                                            for p_name, p_value in x.items()})
-                subset_df["params"] = subset_df["params"].apply(json.dumps)
+            subset_df["params"] = subset_df["params"].apply(json.dumps)
             all_gs_results += [subset_df]
         scores_df = pd.concat(all_gs_results)
         scores_df = scores_df.drop(drop_cols, axis=1)
