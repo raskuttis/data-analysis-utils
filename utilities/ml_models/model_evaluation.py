@@ -21,6 +21,71 @@ from sklearn.pipeline import Pipeline
 from .. import plotting_utilities
 
 
+def get_feature_names(column_transformer):
+    """
+    Utility function to get feature names from all transformers, no matter
+    how nested
+
+    :param column_transformer: Nested Pipeline or Transformer object
+    :return: List of feature names
+    """
+
+    # Turn lookup into function for better handling with pipeline later
+    def get_names(trans):
+        # >> Original get_feature_names() method
+        if trans == 'drop' or (
+                hasattr(column, '__len__') and not len(column)):
+            return []
+        if trans == 'passthrough':
+            if hasattr(column_transformer, '_df_columns'):
+                if ((not isinstance(column, slice))
+                        and all(isinstance(col, str) for col in column)):
+                    return column
+                else:
+                    return column_transformer._df_columns[column]
+            else:
+                indices = np.arange(column_transformer._n_features)
+                return [f"x{i}" for i in indices[column]]
+        if not hasattr(trans, 'get_feature_names'):
+            # >>> Change: Return input column names if no method avaiable
+            # Turn error into a warning
+            logging.info("Transformer %s (type %s) does not "
+                         "provide get_feature_names. "
+                         "Will return input column names if available"
+                          % (str(name), type(trans).__name__))
+            # For transformers without a get_features_names method, use the input
+            # names to the column transformer
+            if column is None:
+                return []
+            else:
+                return [name + "__" + f for f in column]
+
+        return [f"{name}__{f}" for f in trans.get_feature_names()]
+
+    ### Start of processing
+    feature_names = []
+
+    # Allow transformers to be pipelines. Pipeline steps are named differently, so preprocessing is needed
+    if type(column_transformer) == Pipeline:
+        l_transformers = [(name, trans, None, None) for step, name, trans in column_transformer._iter()]
+    else:
+        # For column transformers, follow the original method
+        l_transformers = list(column_transformer._iter(fitted=True))
+
+    for name, trans, column, _ in l_transformers:
+        if type(trans) == Pipeline:
+            # Recursive call on pipeline
+            _names = get_feature_names(trans)
+            # if pipeline has no transformer that returns names
+            if len(_names) == 0:
+                _names = [f"{name}__{f}" for f in column]
+            feature_names.extend(_names)
+        else:
+            feature_names.extend(get_names(trans))
+
+    return feature_names
+
+
 class ModelReport(object):
     """
     Given a best-fit estimator, report on different features of the model to get
@@ -56,6 +121,34 @@ class ModelReport(object):
         self.Y_pred = self.model.predict(X_test)
         self.Y_prob = self.model.predict_proba(X_test)[:, 1]
         self.Y_actual = Y_test
+
+    def plot_feature_importances(self, max_features=20):
+        """
+        Plot the feature importances in descending order for the model
+
+        :param: Maximum number of features to plot
+        :return: Matplotlib Axis object
+        """
+
+        # Check if there's a preprocess pipe and model in the existing model
+        try:
+            clf = self.model["model"]
+            preprocess_pipe = self.model["preprocess"]
+            importances = clf.feature_importances_
+            feature_names = get_feature_names(preprocess_pipe)
+        except Exception as error:
+            print(f"Couldn't find feature names with error {error}")
+            logging.info(f"Couldn't find feature names with error {error}")
+            importances = self.model.feature_importances_
+            feature_names = range(len(importances))
+
+        importance_df = pd.DataFrame({"Feature": feature_names,
+                                      "Importance": importances})
+        importance_df = importance_df.sort_values(by=["Importance"], ascending=False)
+        if max_features:
+            importance_df = importance_df[:max_features]
+
+        return sns.barplot(x="Importance", y="Feature", data=importance_df, palette="Blues_d")
 
     def plot_confusion_matrix(self):
         """
