@@ -335,9 +335,10 @@ class ModelComparison(object):
             subset_df["score_time"] = np.random.normal(subset_df["mean_score_time"],
                                                        subset_df["std_score_time"])
             if self.preprocess_pipe:
+                subset_df["params"] = subset_df["params"].apply(json.loads)
                 subset_df["params"] = subset_df["params"].apply(lambda x: {p_name.replace("model__", ""): p_value
                                                                            for p_name, p_value in x.items()})
-            subset_df["params"] = subset_df["params"].apply(json.dumps)
+                subset_df["params"] = subset_df["params"].apply(json.dumps)
             all_gs_results += [subset_df]
         scores_df = pd.concat(all_gs_results)
         scores_df = scores_df.drop(drop_cols, axis=1)
@@ -363,7 +364,7 @@ class ModelComparison(object):
         best_model = best_scores["model"].unique()[0]
         best_model = self.models.get(best_model, {}).get("Classifier")
         best_params = json.loads(best_scores["params"].unique()[0])
-        best_model.set_params(**best_params)
+        best_model.set_params(**json.loads(best_params))
         if self.preprocess_pipe:
             best_model = Pipeline([("preprocess", self.preprocess_pipe), ("model", best_model)])
 
@@ -410,13 +411,13 @@ class ModelComparison(object):
                     grid_search.fit(self.X_train, self.Y_train)
                     # Reshape the grid search results
                     scores_df = self.parse_grid_search_results(grid_search.cv_results_)
+                    scores_df["params"] = scores_df["params"].apply(json.dumps)
                     best_scores[model_name] = grid_search.best_score_
                 else:
                     scores = cross_validate(clf, self.X_train, self.Y_train, cv=self.folds,
                                             scoring=metrics)
                     scores_df = pd.DataFrame(scores)
                     scores_df["params"] = "{}"
-                    scores_df["params"] = scores_df["params"].apply(json.loads)
                     scores_df["rank"] = 1
                     best_scores[model_name] = np.mean(scores[f"test_{self.fit_metric}"])
                 scores_df = scores_df.rename(columns={f"test_{metric}": metric for metric in metrics})
