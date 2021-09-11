@@ -11,7 +11,10 @@ import boto3
 import bisect
 import datetime
 
+from botocore.exceptions import ClientError
+
 logger = logging.getLogger(__name__)
+
 
 class ComprehendHandler:
     """
@@ -35,7 +38,6 @@ class ComprehendHandler:
         self.session = boto3.Session(**kwargs)
         self.comprehend_client = self.session.client("comprehend")
         self.ce_client = self.session.client("ce")
-        self.pii_detector = PIIDetect(self.comprehend_client, hard_unit_limit=False)
 
         # Initiate the starting AWS usage
         if not starting_units:
@@ -138,7 +140,7 @@ class ComprehendHandler:
         """
 
         # Initialize the Detector for interacting with Comprehend
-        if usage_type == "DetectPiiEntities":
+        if usage_type in ["DetectPiiEntities", "ContainsPiiEntities"]:
             comprehend_detector = PIIDetect(self.comprehend_client,
                                             hard_unit_limit=False)
         else:
@@ -175,7 +177,7 @@ class ComprehendHandler:
             raise ValueError(f"Comprehend Request exceeds maximum cost {self.max_cost}")
 
         # Otherwise continue submitting to Comprehend
-        entities = detector.extract(documents, **kwargs)
+        entities = detector.extract(documents, usage_type, **kwargs)
 
         # Update the usage and cost
         self.units_submitted[usage_type] = self.units_submitted.get(usage_type, 0) + n_units
@@ -204,12 +206,18 @@ class ComprehendHandler:
         # Initialize the Detector for interacting with Comprehend
         comprehend_detector = self.initialize_detector(usage_type)
 
+        # Manually set the minimum post size to 1 document if we're using
+        # Contains PII
+        min_post_units = self.min_post_units
+        if usage_type == "ContainsPiiEntities":
+            min_post_units = 1
+
         # Iterate through the list of documents
         for text in documents:
             submit_documents += [text]
             n_chars += len(text)
             n_units = comprehend_detector.get_units(n_chars)
-            if n_units < self.min_post_units:
+            if n_units < min_post_units:
                 pass
             else:
                 entities = self.extract_batch(submit_documents, comprehend_detector,
@@ -280,6 +288,7 @@ class ComprehendHandler:
         total_cost = self.estimate_cost(n_units, usage_type)
 
         return total_units, total_cost
+
 
 class ComprehendDetect:
     """Encapsulates Comprehend detection functions."""
@@ -366,6 +375,26 @@ class ComprehendDetect:
         else:
             return entities
 
+    def contains_pii(self, text, language_code):
+        """
+        Detects whether a document contains personally identifiable information (PII).
+        PII can be things like names, account numbers, or addresses.
+
+        :param text: The document to inspect.
+        :param language_code: The language of the document.
+        :return: The list of PII types along with their confidence scores.
+        """
+        try:
+            response = self.comprehend_client.contains_pii_entities(
+                Text=text, LanguageCode=language_code)
+            pii_types = response['Labels']
+            logger.info("Detected %s types of PII.", len(pii_types))
+        except ClientError:
+            logger.exception("Couldn't detect PII entities.")
+            raise
+        else:
+            return pii_types
+
     def detect_sentiment(self, text, language_code):
         """
         Detects the overall sentiment expressed in a document. Sentiment can
@@ -422,6 +451,7 @@ class ComprehendDetect:
 
         return units
 
+
 class PIIDetect(ComprehendDetect):
     """
     Encapsulates Comprehend detection functions for identifying PII
@@ -435,12 +465,13 @@ class PIIDetect(ComprehendDetect):
         self.comprehend_client = comprehend_client
         self.hard_unit_limit = hard_unit_limit
 
-    def extract(self, documents, language_code="en", max_units=50000):
+    def extract(self, documents, usage_type, language_code="en", max_units=50000):
         """
         Detects personally identifiable information (PII) in a document,
         and outputs the entities in a readable format
 
         :param documents: List of documents to inspect
+        :param usage_type: What service we're using with Comprehend.
         :param language_code: The language of the document e.g. "en"
         :param max_units: Maximum amount of units that we can submit
         :return: A mapping from PII type to the list of entities and
@@ -449,8 +480,17 @@ class PIIDetect(ComprehendDetect):
 
         # Create a single text from all of the documents, as well as get
         # all the document offsets
-        text = "\n".join(document for document in documents)
-        doc_offsets = [text.index(document) for document in documents]
+        if usage_type == "DetectPiiEntities":
+            text = "\n".join(document for document in documents)
+            doc_offsets = [text.index(document) for document in documents]
+        elif usage_type == "ContainsPiiEntities":
+            if len(documents) > 1:
+                raise ValueError(f"Can't submit more than 1 document at a time to "
+                                 f"Contains PII")
+            else:
+                text = documents[0]
+        else:
+            raise ValueError(f"Invalid usage type {usage_type} provided")
 
         # First check that the text submission is valid
         if not self.check_text_submission(text, max_units):
@@ -458,8 +498,14 @@ class PIIDetect(ComprehendDetect):
 
         # Then run PII detection and extraction
         logger.info(f"Submitting {len(documents)} documents for entity extraction")
-        pii_locs = self.detect_pii(text, language_code)
-        pii_entities = self.output_pii_entities(text, doc_offsets, pii_locs)
+        if usage_type == "DetectPiiEntities":
+            pii_locs = self.detect_pii(text, language_code)
+            pii_entities = self.output_pii_entities(text, doc_offsets, pii_locs)
+        elif usage_type == "ContainsPiiEntities":
+            pii_labels = self.contains_pii(text, language_code)
+            pii_entities = self.output_pii_types(pii_labels)
+        else:
+            raise ValueError(f"Invalid usage type {usage_type} provided")
 
         return pii_entities
 
@@ -494,6 +540,29 @@ class PIIDetect(ComprehendDetect):
                 logger.warning("Invalid PII Type found")
 
         return entity_mappings
+
+    @staticmethod
+    def output_pii_types(pii_labels):
+        """
+        Given a set of labels output from contains_pii, returns
+        the types of PII
+
+        :param pii_labels: Output of contains_pii
+        :return: A mapping from PII type to the scores associated with
+        each PII type
+        """
+
+        # Iterate through entities to extract the PII from each
+        entity_mapping = {}
+        for pii_dict in pii_labels:
+            pii_type = pii_dict.get("Name")
+            if pii_type:
+                pii_output = {"Score": pii_dict.get("Score", 0)}
+                entity_mapping[pii_type] = entity_mapping.get(pii_type, []) + [pii_output]
+            else:
+                logger.warning("Invalid PII Type found")
+
+        return [entity_mapping]
 
     def check_text_submission(self, text, max_units=50000):
         """
