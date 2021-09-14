@@ -116,7 +116,8 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
     columns of a pandas dataframe
     """
 
-    def __init__(self, feature_df, feature_name, target_name, feature_type=None, target_type=None):
+    def __init__(self, feature_df, feature_name, target_name, feature_type=None, target_type=None,
+                 data_range=None):
         """
         Init method for Feature Correlator. Takeakes in a dataframe with feature variables, as
         well as the feature and target variable names and types
@@ -126,6 +127,7 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
         :param target_name: Name of the column containing the target variable
         :param feature_type: Type of the feature e.g. Numerical, Categorical etc.
         :param target_type: Type of the Target variable e.g. Binary, Continuous
+        :param data_range: Explicitly defined data range for the feature variable
         """
 
         feature_subset = feature_df[[feature_name, target_name]].dropna()
@@ -140,7 +142,9 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
         iqr = q3 - q1
         qmax = min(q3 + 4 * iqr, max(feature_vals))
         qmin = max(q1 - 4 * iqr, min(feature_vals))
-        self.data_range = (qmin, qmax)
+        self.data_range = data_range:
+        if not self.data_range:
+            self.data_range = (qmin, qmax)
 
         # Define the default plots based on whether the variable
         self.default_plots = []
