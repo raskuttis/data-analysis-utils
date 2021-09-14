@@ -501,7 +501,7 @@ class PIIDetect(ComprehendDetect):
             text = "\n".join(document for document in documents)
             #doc_offsets = [text.index(document) for document in documents]
             doc_lengths = [0] + [len(document) + 1 for document in documents]
-            doc_offsets = list(np.cumsum(doc_lengths))
+            doc_offsets = [int(x) for x in list(np.cumsum(doc_lengths))]
         elif usage_type == "ContainsPiiEntities":
             if len(documents) > 1:
                 raise ValueError(f"Can't submit more than 1 document at a time to "
