@@ -142,7 +142,7 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
         iqr = q3 - q1
         qmax = min(q3 + 4 * iqr, max(feature_vals))
         qmin = max(q1 - 4 * iqr, min(feature_vals))
-        self.data_range = data_range:
+        self.data_range = data_range
         if not self.data_range:
             self.data_range = (qmin, qmax)
 
