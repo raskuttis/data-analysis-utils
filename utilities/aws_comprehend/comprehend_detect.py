@@ -10,8 +10,12 @@ import math
 import boto3
 import bisect
 import datetime
+import numpy as np
+import sys
+import itertools
 
 from botocore.exceptions import ClientError
+from .comprehend_exceptions import LowUnitSizeError, HighUnitSizeError, HighByteSizeError
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +26,14 @@ class ComprehendHandler:
     that ensures we're not over-using the API
     """
     def __init__(self, starting_units=None, max_cost=0,
-                 min_post_units=3, **kwargs):
+                 min_post_units=3, max_post_bytes=4950, **kwargs):
         """
         :param starting_units: Number of units of text already submitted to
         Comprehend as a dictionary
         :param max_cost: Max allowable cost on AWS
         :param min_post_units: Minimum number of units to allow for a post
         to comprehend
+        :param max_post_bytes: Maximum size to post in bytes
         :param kwargs: Keywords associated with the AWS Credentials to
         initiate the session
         to Comprehend before halting things
@@ -46,6 +51,7 @@ class ComprehendHandler:
         self.units_submitted = starting_units
         self.max_cost = max_cost
         self.min_post_units = min_post_units
+        self.max_post_bytes = max_post_bytes
 
     def get_comprehend_usage(self, granularity="MONTHLY"):
         """
@@ -177,7 +183,8 @@ class ComprehendHandler:
             raise ValueError(f"Comprehend Request exceeds maximum cost {self.max_cost}")
 
         # Otherwise continue submitting to Comprehend
-        entities = detector.extract(documents, usage_type, **kwargs)
+        entities = detector.extract(documents, usage_type, max_byte_size=self.max_post_bytes,
+                                    **kwargs)
 
         # Update the usage and cost
         self.units_submitted[usage_type] = self.units_submitted.get(usage_type, 0) + n_units
@@ -465,7 +472,8 @@ class PIIDetect(ComprehendDetect):
         self.comprehend_client = comprehend_client
         self.hard_unit_limit = hard_unit_limit
 
-    def extract(self, documents, usage_type, language_code="en", max_units=50000):
+    def extract(self, documents, usage_type, language_code="en", max_units=50000,
+                max_byte_size=4950):
         """
         Detects personally identifiable information (PII) in a document,
         and outputs the entities in a readable format
@@ -474,6 +482,7 @@ class PIIDetect(ComprehendDetect):
         :param usage_type: What service we're using with Comprehend.
         :param language_code: The language of the document e.g. "en"
         :param max_units: Maximum amount of units that we can submit
+        :param max_byte_size: Maximum size of a submission in bytes
         :return: A mapping from PII type to the list of entities and
         snippets associated with them in the text
         """
@@ -482,7 +491,9 @@ class PIIDetect(ComprehendDetect):
         # all the document offsets
         if usage_type == "DetectPiiEntities":
             text = "\n".join(document for document in documents)
-            doc_offsets = [text.index(document) for document in documents]
+            #doc_offsets = [text.index(document) for document in documents]
+            doc_lengths = [0] + [len(document) + 1 for document in documents]
+            doc_offsets = list(np.cumsum(doc_lengths))
         elif usage_type == "ContainsPiiEntities":
             if len(documents) > 1:
                 raise ValueError(f"Can't submit more than 1 document at a time to "
@@ -492,20 +503,49 @@ class PIIDetect(ComprehendDetect):
         else:
             raise ValueError(f"Invalid usage type {usage_type} provided")
 
-        # First check that the text submission is valid
-        if not self.check_text_submission(text, max_units):
-            raise ValueError(f"Input text failed checks on submission length")
-
-        # Then run PII detection and extraction
+        # First check that the text submission is valid and split into multiple
+        # texts if necessary
         logger.info(f"Submitting {len(documents)} documents for entity extraction")
+        try:
+            self.check_text_submission(text, max_units, max_byte_size=max_byte_size)
+            if usage_type == "DetectPiiEntities":
+                pii_locs = self.detect_pii(text, language_code)
+            elif usage_type == "ContainsPiiEntities":
+                pii_locs = self.contains_pii(text, language_code)
+        except LowUnitSizeError:
+            if self.hard_unit_limit:
+                raise ValueError(f"Input text failed checks on submission length")
+            else:
+                if usage_type == "DetectPiiEntities":
+                    pii_locs = self.detect_pii(text, language_code)
+                elif usage_type == "ContainsPiiEntities":
+                    pii_locs = self.contains_pii(text, language_code)
+        except HighUnitSizeError:
+            raise ValueError(f"Input text failed checks on submission length")
+        # If the byte size is too big, then split up the results and try again
+        except HighByteSizeError:
+            split_texts = self.split_text_submission(text, max_byte_size=max_byte_size)
+            if usage_type == "DetectPiiEntities":
+                pii_locs = []
+                for text_pos, split_text in split_texts:
+                    split_pii_locs = self.detect_pii(split_text, language_code)
+                    for pii_loc in split_pii_locs:
+                        pii_loc["BeginOffset"] = pii_loc.get("BeginOffset", 0) + text_pos
+                        pii_loc["EndOffset"] = pii_loc.get("EndOffset", 0) + text_pos
+                    pii_locs += split_pii_locs
+            elif usage_type == "ContainsPiiEntities":
+                pii_locs = []
+                for _, split_text in split_texts:
+                    pii_locs += self.contains_pii(split_text, language_code)
+        except:
+            raise ValueError(f"Input text failed checks on Unknown Error")
+
+        # Then run PII extraction
+        logger.info(f"Extracting entities and snippets from the Comprehend results")
         if usage_type == "DetectPiiEntities":
-            pii_locs = self.detect_pii(text, language_code)
             pii_entities = self.output_pii_entities(text, doc_offsets, pii_locs)
         elif usage_type == "ContainsPiiEntities":
-            pii_labels = self.contains_pii(text, language_code)
-            pii_entities = self.output_pii_types(pii_labels)
-        else:
-            raise ValueError(f"Invalid usage type {usage_type} provided")
+            pii_entities = self.output_pii_types(pii_locs)
 
         return pii_entities
 
@@ -523,17 +563,20 @@ class PIIDetect(ComprehendDetect):
         """
 
         # Iterate through entities to extract the PII from each
-        entity_mappings = [{} for _ in doc_offsets]
+        entity_mappings = [{} for _ in doc_offsets[:-1]]
         for entity in entities:
             pii_type = entity.get("Type")
             pii_score = entity.get("Score", 0)
             start = entity.get("BeginOffset", 0)
             finish = entity.get("EndOffset", 0)
             doc_index = bisect.bisect_left(doc_offsets, finish) - 1
-            pii, pii_snippet = self.extract_snippet(text, start, finish)
+            doc_start = doc_offsets[doc_index]
+            doc_finish = doc_offsets[doc_index + 1]
+            pii, pii_snippet = self.extract_snippet(text, start, finish, doc_start=doc_start,
+                                                    doc_finish=doc_finish)
             if pii_type:
                 pii_dict = {"Score": pii_score, "PII": pii, "Snippet": pii_snippet,
-                            "Start": start, "Finish": finish}
+                            "Start": start - doc_start, "Finish": finish - doc_start}
                 entity_mapping = entity_mappings[doc_index]
                 entity_mapping[pii_type] = entity_mapping.get(pii_type, []) + [pii_dict]
             else:
@@ -564,14 +607,14 @@ class PIIDetect(ComprehendDetect):
 
         return [entity_mapping]
 
-    def check_text_submission(self, text, max_units=50000):
+    def check_text_submission(self, text, max_units=50000, max_byte_size=4950):
         """
         Given a piece of text, checks it's validity for submission to
         AWS comprehend against a variety of limits
 
         :param text: The document we're planning to send to Comprehend
         :param max_units: Maximum amount of units that we can submit
-        :return: Boolean for whether it should be submitted or not
+        :param max_byte_size: Maximum size of a submission in bytes
         """
 
         # First check that we're above the minimum number of units in
@@ -580,28 +623,55 @@ class PIIDetect(ComprehendDetect):
         if n_units < 3:
             exception_string = f"Only {n_units} units in the text, which is " \
                                f"below the submission limit of 3"
-            if self.hard_unit_limit:
-                logger.exception(exception_string)
-                return False
-            else:
-                logger.warning(exception_string)
+            logger.exception(exception_string)
+            raise LowUnitSizeError(exception_string)
         elif n_units > max_units:
             exception_string = f"The {n_units} units in the text, exceed the " \
                                f"maximum allowed amount remaining"
             logger.exception(exception_string)
-            return False
-
-        return True
+            raise HighUnitSizeError(exception_string)
+        elif sys.getsizeof(text) > max_byte_size:
+            exception_string = f"The {sys.getsizeof(text)} bytes in the text, exceed the " \
+                               f"maximum allowed amount of {max_byte_size} bytes"
+            logger.exception(exception_string)
+            raise HighByteSizeError(exception_string)
 
     @staticmethod
-    def extract_snippet(text, start, finish, snippet_size=50):
+    def split_text_submission(text, max_byte_size=4950):
+        """
+        Given a piece of text, splits it into a series of strings, none
+        larger than the maximum size
+
+        :param text: The document we're planning to send to Comprehend
+        :param max_byte_size: Maximum size of a submission in bytes
+        :return List of tuples containing the split texts and the positions of
+        those splits in the original text
+        """
+
+        starting_pos = 0
+        all_texts = []
+        for k, g in itertools.groupby(enumerate(text), lambda x: not x[1].isspace()):
+            if k:
+                pos, first_item = next(g)
+                new_word = first_item + ''.join([x for _, x in g])
+                if pos - starting_pos + len(new_word) > max_byte_size:
+                    all_texts += [(starting_pos, text[starting_pos:pos])]
+                    starting_pos = pos
+        all_texts += [(starting_pos, text[starting_pos:len(text)])]
+
+        return all_texts
+
+    @staticmethod
+    def extract_snippet(text, start, finish, snippet_size=50, doc_start=0, doc_finish=None):
         """
         Given a piece of text and the start and finish of the identified
         word, returns a snippet from the text around that word
 
         :param text: The document with the snippet contained
-        :param start: The starting character of the identified word
-        :param finish: The ending character of the identified word
+        :param start: The starting character of the identified word in the text
+        :param finish: The ending character of the identified word in the text
+        :param doc_start: The starting character of the identified sub_document in the text
+        :param doc_finish: The ending character of the identified sub_document in the text
         :param snippet_size: The number of characters on either side
         of the word that we want to identify
         :return: A tuple containing the extracted word, and the
@@ -612,10 +682,15 @@ class PIIDetect(ComprehendDetect):
         # points
         extracted_word = text[start:finish]
 
+        # Define the ending document offset
+        if not doc_finish:
+            doc_finish = len(text)
+
         # The extracted snippet is defined by the start and end plus
         # the snippet size
-        snippet_start = max(start-snippet_size, 0)
-        snippet_finish = min(finish+snippet_size,len(text))
+        snippet_start = max(start - snippet_size, doc_start)
+        snippet_finish = min(finish + snippet_size, doc_finish)
         extracted_snippet = text[snippet_start:snippet_finish]
 
         return extracted_word, extracted_snippet
+
