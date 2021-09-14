@@ -227,8 +227,12 @@ class ComprehendHandler:
             if n_units < min_post_units:
                 pass
             else:
-                entities = self.extract_batch(submit_documents, comprehend_detector,
-                                              usage_type, n_units=n_units, **kwargs)
+                try:
+                    entities = self.extract_batch(submit_documents, comprehend_detector,
+                                                  usage_type, n_units=n_units, **kwargs)
+                except Exception as error:
+                    logger.error(f"Call to AWS failed with error {error}")
+                    entities = [None for _ in submit_documents]
                 for entity in entities:
                     yield entity
                 submit_documents = []
@@ -236,8 +240,12 @@ class ComprehendHandler:
 
         # And post whatever is left over as a final batch
         if n_chars > 0:
-            entities = self.extract_batch(submit_documents, comprehend_detector,
-                                          usage_type, n_units=n_units, **kwargs)
+            try:
+                entities = self.extract_batch(submit_documents, comprehend_detector,
+                                              usage_type, n_units=n_units, **kwargs)
+            except Exception as error:
+                logger.error(f"Call to AWS failed with error {error}")
+                entities = [None for _ in submit_documents]
             for entity in entities:
                 yield entity
 
