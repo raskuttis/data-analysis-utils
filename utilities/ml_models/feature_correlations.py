@@ -136,7 +136,7 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
         self.target = target_name
 
         # Get quartiles and IQR to define the data range
-        if feature_type == "Numerical:"
+        if feature_type == "Numerical":
             feature_vals = feature_subset[self.feature]
             q1 = np.percentile(feature_vals, 25)
             q3 = np.percentile(feature_vals, 75)
