@@ -136,12 +136,16 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
         self.target = target_name
 
         # Get quartiles and IQR to define the data range
-        feature_vals = feature_subset[self.feature]
-        q1 = np.percentile(feature_vals, 25)
-        q3 = np.percentile(feature_vals, 75)
-        iqr = q3 - q1
-        qmax = min(q3 + 4 * iqr, max(feature_vals))
-        qmin = max(q1 - 4 * iqr, min(feature_vals))
+        if feature_type == "Numerical:"
+            feature_vals = feature_subset[self.feature]
+            q1 = np.percentile(feature_vals, 25)
+            q3 = np.percentile(feature_vals, 75)
+            iqr = q3 - q1
+            qmax = min(q3 + 4 * iqr, max(feature_vals))
+            qmin = max(q1 - 4 * iqr, min(feature_vals))
+        else:
+            qmin = 0
+            qmax = 1
         self.data_range = data_range
         if not self.data_range:
             self.data_range = (qmin, qmax)
@@ -151,6 +155,8 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
         if feature_type == "Numerical" and target_type == "Binary":
             self.default_plots = ["plot_violin", "plot_box", "plot_histogram", "plot_regression"]
         elif feature_type == "Categorical" and target_type == "Binary":
+            self.default_plots = ["plot_histogram", "plot_contingency_table"]
+        elif feature_type == "Binary" and target_type == "Binary":
             self.default_plots = ["plot_histogram", "plot_contingency_table"]
 
     def plot_contingency_table(self):
