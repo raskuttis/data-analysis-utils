@@ -31,7 +31,7 @@ class FeatureCorrelator(object):
 
         self.feature_df = feature_df
 
-    def plot_contingency_table(self, feature_a, feature_b):
+    def plot_contingency_table(self, feature_a, feature_b, **kwargs):
         """
         Plot a contingency table on categorical features
 
@@ -41,9 +41,9 @@ class FeatureCorrelator(object):
         """
 
         contingency = pd.crosstab(self.feature_df[feature_a], self.feature_df[feature_b])
-        return sns.heatmap(contingency, annot=True, fmt='.2f', cmap="YlGnBu")
+        return sns.heatmap(contingency, annot=True, fmt='.2f', cmap="YlGnBu", **kwargs)
 
-    def plot_histogram(self, feature_a, feature_b):
+    def plot_histogram(self, feature_a, feature_b, **kwargs):
         """
         Plot a histogram representing percentages of one feature vs.
         another
@@ -53,9 +53,10 @@ class FeatureCorrelator(object):
         :return: Matplotlib Axis object
         """
 
-        return sns.histplot(x=self.feature_df[feature_a], hue=self.feature_df[feature_b], stat="probability")
+        return sns.histplot(x=self.feature_df[feature_a], hue=self.feature_df[feature_b], stat="probability",
+                            **kwargs)
 
-    def plot_violin(self, feature_a, feature_b):
+    def plot_violin(self, feature_a, feature_b, **kwargs):
         """
         Plot a violin plot to show how a continuous variable feature_a varies with a binary
         variable feature_b
@@ -65,9 +66,9 @@ class FeatureCorrelator(object):
         :return: Matplotlib Axis object
         """
 
-        return sns.violinplot(data=self.feature_df, x=feature_b, y=feature_a)
+        return sns.violinplot(data=self.feature_df, x=feature_b, y=feature_a, **kwargs)
 
-    def plot_box(self, feature_a, feature_b):
+    def plot_box(self, feature_a, feature_b, **kwargs):
         """
         Plot a box plot to show how a continuous variable feature_a varies with a binary
         variable feature_b
@@ -77,9 +78,9 @@ class FeatureCorrelator(object):
         :return: Matplotlib Axis object
         """
 
-        return sns.boxplot(data=self.feature_df, x=feature_b, y=feature_a)
+        return sns.boxplot(data=self.feature_df, x=feature_b, y=feature_a, **kwargs)
 
-    def plot_regression(self, feature_a, feature_b):
+    def plot_regression(self, feature_a, feature_b, **kwargs):
         """
         Plot a regression for when we try to fit feature_b using feature_a
 
@@ -90,7 +91,7 @@ class FeatureCorrelator(object):
 
         # Plot Logistic Regression output
         plot = sns.regplot(data=self.feature_df, x=feature_a, y=feature_b,
-                           y_jitter=.02, logistic=True, truncate=False)
+                           y_jitter=.02, logistic=True, truncate=False, **kwargs)
 
         # Get some overall correlation metrics to measure the LR Accuracy
         # Logistic Regression Accuracy
@@ -159,16 +160,16 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
         elif feature_type == "Binary" and target_type == "Binary":
             self.default_plots = ["plot_histogram", "plot_contingency_table"]
 
-    def plot_contingency_table(self):
+    def plot_contingency_table(self, **kwargs):
         """
         Plot a contingency between the feature and target
 
         :return: Matplotlib Axis object
         """
 
-        return super().plot_contingency_table(self.feature, self.target)
+        return super().plot_contingency_table(self.feature, self.target, **kwargs)
 
-    def plot_histogram(self):
+    def plot_histogram(self, **kwargs):
         """
         Plot a histogram representing percentages of one categorical feature vs.
         another
@@ -176,39 +177,39 @@ class SingleFeatureTargetCorrelator(FeatureCorrelator):
         :return: Matplotlib Axis object
         """
 
-        plot = super().plot_histogram(self.feature, self.target)
+        plot = super().plot_histogram(self.feature, self.target, **kwargs)
         plot.set_xlim(*self.data_range)
         return plot
 
-    def plot_violin(self):
+    def plot_violin(self, **kwargs):
         """
         Plot a violin plot to show how a continuous variable varies with a binary target
 
         :return: Matplotlib Axis object
         """
 
-        plot = super().plot_violin(self.feature, self.target)
+        plot = super().plot_violin(self.feature, self.target, **kwargs)
         plot.set_ylim(*self.data_range)
         return plot
 
-    def plot_box(self):
+    def plot_box(self, **kwargs):
         """
         Plot a box plot to show how a continuous variable varies with a binary target
 
         :return: Matplotlib Axis object
         """
 
-        plot = super().plot_box(self.feature, self.target)
+        plot = super().plot_box(self.feature, self.target, **kwargs)
         plot.set_ylim(*self.data_range)
         return plot
 
-    def plot_regression(self):
+    def plot_regression(self, **kwargs):
         """
         Plot a regression for when we try to fit the target using the single feature
 
         :return: Matplotlib Axis object
         """
 
-        plot = super().plot_regression(self.feature, self.target)
+        plot = super().plot_regression(self.feature, self.target, **kwargs)
         plot.set_xlim(*self.data_range)
         return plot
