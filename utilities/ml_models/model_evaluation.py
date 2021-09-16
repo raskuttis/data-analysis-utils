@@ -17,6 +17,7 @@ from sklearn.model_selection import GridSearchCV, cross_validate
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.metrics import roc_curve, precision_recall_curve
 from sklearn.pipeline import Pipeline
+from sklearn.inspection import permutation_importance
 
 from .. import plotting_utilities
 
@@ -130,16 +131,30 @@ class ModelReport(object):
         :return: Matplotlib Axis object
         """
 
+
         # Check if there's a preprocess pipe and model in the existing model
         try:
             clf = self.model["model"]
             preprocess_pipe = self.model["preprocess"]
-            importances = clf.feature_importances_
+            if hasattr(clf, 'feature_importances_'):
+                importances = clf.feature_importances_
+            elif hasattr(clf, 'coef_'):
+                importances = clf.coeff_
+            else:
+                importances = permutation_importance(clf, self.X_test, self.Y_actual)
+                importances = importances.importances_mean
             feature_names = get_feature_names(preprocess_pipe)
         except Exception as error:
             print(f"Couldn't find feature names with error {error}")
             logging.info(f"Couldn't find feature names with error {error}")
-            importances = self.model.feature_importances_
+            clf = self.model
+            if hasattr(clf, 'feature_importances_'):
+                importances = clf.feature_importances_
+            elif hasattr(clf, 'coef_'):
+                importances = clf.coeff_
+            else:
+                importances = permutation_importance(clf, self.X_test, self.Y_actual)
+                importances = importances.importances_mean
             feature_names = range(len(importances))
 
         importance_df = pd.DataFrame({"Feature": feature_names,

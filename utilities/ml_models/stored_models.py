@@ -17,49 +17,106 @@ from sklearn.svm import SVC
 
 MODELS = {
     "Classification": {
-        "LR": {
-            "Classifier": LogisticRegression()
-        },
-        "LDA": {
-            "Classifier": LinearDiscriminantAnalysis()
-        },
-        "KNN": {
-            "Classifier": KNeighborsClassifier()
-        },
-        "CART": {
-            "Classifier": DecisionTreeClassifier()
-        },
-        "NB": {
-            "Classifier": GaussianNB()
-        },
-        "RF": {
-            "Classifier": RandomForestClassifier(),
-            "Parameters": {
-                "n_estimators": [16, 32]
+        "Binary": {
+            "LR": {
+                "Classifier": LogisticRegression()
+            },
+            "LDA": {
+                "Classifier": LinearDiscriminantAnalysis()
+            },
+            "KNN": {
+                "Classifier": KNeighborsClassifier()
+            },
+            "CART": {
+                "Classifier": DecisionTreeClassifier()
+            },
+            "NB": {
+                "Classifier": GaussianNB()
+            },
+            "RF": {
+                "Classifier": RandomForestClassifier(),
+                "Parameters": {
+                    "n_estimators": [16, 32]
+                }
+            },
+            "ADA": {
+                "Classifier": AdaBoostClassifier(),
+                "Parameters": {
+                    "n_estimators": [16, 32]
+                }
+            },
+    #        "XGB": {
+    #            "Classifier": XGBClassifier(verbosity=0)
+    #        },
+            "GB": {
+                "Classifier": GradientBoostingClassifier(),
+                "Parameters": {
+                    "n_estimators": [16, 32],
+                    "learning_rate": [0.8, 1.0]
+                }
+            },
+            "SVM": {
+                "Classifier": SVC(),
+                "Parameters": {
+                    "kernel": ["rbf"],
+                    "C": [1, 10],
+                    "gamma": [0.001, 0.0001]
+                }
             }
         },
-        "ADA": {
-            "Classifier": AdaBoostClassifier(),
-            "Parameters": {
-                "n_estimators": [16, 32]
-            }
-        },
-#        "XGB": {
-#            "Classifier": XGBClassifier(verbosity=0)
-#        },
-        "GB": {
-            "Classifier": GradientBoostingClassifier(),
-            "Parameters": {
-                "n_estimators": [16, 32],
-                "learning_rate": [0.8, 1.0]
-            }
-        },
-        "SVM": {
-            "Classifier": SVC(),
-            "Parameters": {
-                "kernel": ["rbf"],
-                "C": [1, 10],
-                "gamma": [0.001, 0.0001]
+        "Multiclass": {
+            "LR-OVR": {
+                "Classifier": LogisticRegression(multi_class="ovr")
+            },
+            "LR-MN": {
+                "Classifier": LogisticRegression(multi_class="multinomial")
+            },
+            "KNN": {
+                "Classifier": KNeighborsClassifier()
+            },
+            "CART": {
+                "Classifier": DecisionTreeClassifier()
+            },
+            "NB": {
+                "Classifier": GaussianNB()
+            },
+            "RF": {
+                "Classifier": RandomForestClassifier(),
+                "Parameters": {
+                    "n_estimators": [16, 32]
+                }
+            },
+            "ADA": {
+                "Classifier": AdaBoostClassifier(),
+                "Parameters": {
+                    "n_estimators": [16, 32]
+                }
+            },
+            #        "XGB": {
+            #            "Classifier": XGBClassifier(verbosity=0)
+            #        },
+            "GB": {
+                "Classifier": GradientBoostingClassifier(),
+                "Parameters": {
+                    "n_estimators": [16, 32],
+                    "learning_rate": [0.8, 1.0]
+                }
+            },
+            "SVM-OVR": {
+                "Classifier": SVC(multi_class="ovr"),
+                "Parameters": {
+                    "kernel": ["rbf"],
+                    "C": [1, 10],
+                    "gamma": [0.001, 0.0001]
+                }
+            },
+            "SVM-MN": {
+                "Classifier": SVC(multi_class="crammer_singer"),
+                "Parameters": {
+                    "kernel": ["rbf"],
+                    "C": [1, 10],
+                    "gamma": [0.001, 0.0001]
+                }
             }
         }
     }
