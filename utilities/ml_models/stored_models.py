@@ -12,7 +12,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.naive_bayes import GaussianNB
 #from xgboost import XGBClassifier
-from sklearn.svm import SVC
+from sklearn.svm import SVC, LinearSVC
 
 
 MODELS = {
@@ -103,19 +103,15 @@ MODELS = {
                 }
             },
             "SVM-OVR": {
-                "Classifier": SVC(multi_class="ovr"),
+                "Classifier": LinearSVC(multi_class="ovr"),
                 "Parameters": {
-                    "kernel": ["rbf"],
-                    "C": [1, 10],
-                    "gamma": [0.001, 0.0001]
+                    "C": [0.1, 1, 10, 100]
                 }
             },
             "SVM-MN": {
-                "Classifier": SVC(multi_class="crammer_singer"),
+                "Classifier": LinearSVC(multi_class="crammer_singer"),
                 "Parameters": {
-                    "kernel": ["rbf"],
-                    "C": [1, 10],
-                    "gamma": [0.001, 0.0001]
+                    "C": [0.1, 1, 10, 100]
                 }
             }
         }
