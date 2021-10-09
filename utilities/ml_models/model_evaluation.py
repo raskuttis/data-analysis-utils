@@ -172,8 +172,9 @@ class ModelReport(object):
         :return: Matplotlib Axis object
         """
 
-        confusion = confusion_matrix(self.Y_actual, self.Y_pred)
-        confusion_df = pd.DataFrame(confusion)
+        labels = list(set(self.Y_actual.to_list()))
+        confusion = confusion_matrix(self.Y_actual, self.Y_pred, labels=labels)
+        confusion_df = pd.DataFrame(confusion, index=labels, columns=labels)
         confusion_df.index.name = "True"
         confusion_df.columns.name = "Predicted"
         return sns.heatmap(confusion_df, annot=True, fmt='.2f', cmap="YlGnBu")
